@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>DeepSeek AI</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:system-ui,sans-serif}
+body{background:#111214;color:#e2e2e2;height:100vh;display:flex;overflow:hidden}
+.sidebar{width:240px;background:#1b1c1f;border-right:1px solid #2a2b2e;display:flex;flex-direction:column}
+.new-chat{padding:14px;border-bottom:1px solid #2a2b2e}
+#btnNew{width:100%;padding:10px;background:#007aff;color:white;border:none;border-radius:10px;font-weight:500;cursor:pointer}
+.session-list{flex:1;overflow-y:auto;padding:8px}
+.session-item{padding:10px 12px;margin-bottom:6px;border-radius:8px;cursor:pointer;font-size:14px;color:#d0d0d0;display:flex;justify-content:space-between;align-items:center}
+.session-item:hover{background:#27282b}
+.session-item.active{background:#2d2d33;font-weight:500}
+.del-session{color:#ff5555;font-size:12px;padding:2px 6px}
+.main{flex:1;display:flex;flex-direction:column;padding:14px;overflow:hidden}
+.tools{display:flex;align-items:center;gap:10px;font-size:14px;color:#aaa;margin-bottom:10px}
+.switch{width:34px;height:18px;background:#333;border-radius:9px;position:relative;cursor:pointer}
+.switch::after{content:'';position:absolute;width:14px;height:14px;background:white;border-radius:50%;top:2px;left:2px;transition:.2s}
+.switch.on{background:#007aff}
+.switch.on::after{left:18px}
+.chat-box{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:14px;padding-bottom:20px}
+.msg{max-width:80%;padding:12px 15px;border-radius:14px;line-height:1.5;white-space:pre-wrap}
+.msg-user{background:#007aff;color:white;align-self:flex-end}
+.msg-ai{background:#252629;color:#eee;align-self:flex-start}
+.regen{font-size:12px;color:#0091ff;cursor:pointer;margin-top:4px}
+.input-bar{display:flex;gap:8px;background:#1f2023;border-radius:16px;padding:10px 14px;align-items:center}
+#input{flex:1;background:transparent;border:none;outline:none;color:white;font-size:16px}
+#send{padding:8px 14px;background:#007aff;color:white;border:none;border-radius:12px;cursor:pointer}
+#send:disabled{opacity:.4}
+@media(max-width:600px){.sidebar{width:0;overflow:hidden}.sidebar.show{width:240px}}
+</style>
+</head>
+<body>
+
+<div class="sidebar" id="sidebar">
+  <div class="new-chat"><button id="btnNew">➕ 新建聊天</button></div>
+  <div class="session-list" id="sessionList"></div>
+</div>
+
+<div class="main">
+  <div class="tools">
+    <span>深度思考</span>
+    <div id="thinkSwitch" class="switch"></div>
+    <span id="thinkText">关闭</span>
+  </div>
+  <div class="chat-box" id="chatBox"></div>
+  <div class="input-bar">
+    <input id="input" placeholder="输入消息...">
+    <button id="send" onclick="sendMessage()">发送</button>
+  </div>
+</div>
+
+<script>
+// 你的API Key已经填好，直接用！
+const API_KEY = "sk-b574dd1c614f43f5a753e52eb3165bcd";
+
+let sessions = JSON.parse(localStorage.getItem("sessions")) || [];
+let currentSessionId = localStorage.getItem("currentSessionId") || null;
+let deepThink = false;
+
+thinkSwitch.onclick = ()=>{
+  deepThink=!deepThink;
+  thinkSwitch.classList.toggle("on");
+  thinkText.textContent=deepThink?"开启":"关闭";
+};
+
+function save(){
+  localStorage.setItem("sessions",JSON.stringify(sessions));
+  localStorage.setItem("currentSessionId",currentSessionId);
+}
+
+function renderSessions(){
+  sessionList.innerHTML="";
+  sessions.forEach(s=>{
+    const div=document.createElement("div");
+    div.className="session-item "+(s.id==currentSessionId?"active":"");
+    div.innerHTML=`<span onclick="switchSession('${s.id}')">${s.title}</span><span class="del-session" onclick="delSession('${s.id}')">删除</span>`;
+    sessionList.appendChild(div);
+  });
+}
+
+function newChat(){
+  const id="s"+Date.now();
+  sessions.unshift({id,title:"新对话",messages:[]});
+  currentSessionId=id;
+  save();
+  renderSessions();
+  renderChat();
+}
+
+function switchSession(id){
+  currentSessionId=id;
+  save();
+  renderSessions();
+  renderChat();
+}
+
+function delSession(id){
+  sessions=sessions.filter(s=>s.id!=id);
+  if(currentSessionId==id)currentSessionId=sessions[0]?.id||null;
+  save();
+  renderSessions();
+  renderChat();
+}
+
+function cur(){return sessions.find(s=>s.id==currentSessionId)}
+
+function renderChat(){
+  const c=cur();chatBox.innerHTML="";
+  if(!c)return;
+  c.messages.forEach(m=>{
+    const div=document.createElement("div");
+    div.className="msg msg-"+(m.role=="user"?"user":"ai");
+    div.innerText=m.content;
+    if(m.role=="assistant"){
+      const r=document.createElement("div");
+      r.className="regen";r.innerText="重新生成";
+      r.onclick=regenerate;div.appendChild(r);
+    }
+    chatBox.appendChild(div);
+  });
+  chatBox.scrollTop=chatBox.scrollHeight;
+}
+
+async function sendMessage(){
+  const t=input.value.trim();
+  if(!t)return;
+  let c=cur();
+  if(!c)newChat();c=cur();
+  input.value="";send.disabled=true;
+  if(c.messages.length==0)c.title=t.slice(0,12)+"...";
+  c.messages.push({role:"user",content:t});
+  renderChat();renderSessions();save();
+  try{
+    const res=await fetch("https://api.deepseek.com/chat/completions",{
+      method:"POST",
+      headers:{"Content-Type":"application/json","Authorization":"Bearer "+API_KEY},
+      body:JSON.stringify({
+        model:deepThink?"deepseek-reasoner":"deepseek-chat",
+        messages:c.messages,temperature:0.7
+      })
+    });
+    const data=await res.json();
+    const reply=data.choices?.[0]?.message?.content||"请求失败";
+    c.messages.push({role:"assistant",content:reply});
+  }catch(e){
+    c.messages.push({role:"assistant",content:"错误："+e.message});
+  }
+  renderChat();save();send.disabled=false;
+}
+
+function regenerate(){
+  const c=cur();if(!c||c.messages.length<2)return;
+  c.messages.pop();renderChat();save();
+  sendMessage();
+}
+
+input.onkeypress=e=>e.key=="Enter"&&sendMessage();
+btnNew.onclick=newChat;
+renderSessions();renderChat();
+</script>
+</body>
+</html>
