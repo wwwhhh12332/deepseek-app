@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>DeepSeek 流式助手 - 最终版</title>
+    <title>DeepSeek 流式助手 - 手机右滑版</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         :root {
@@ -48,8 +48,12 @@
             border-right: 1px solid var(--border-color);
             display: flex;
             flex-direction: column;
-            transition: transform 0.3s;
+            transition: transform 0.3s ease;
             z-index: 10;
+            transform: translateX(-100%);
+        }
+        .sidebar.open {
+            transform: translateX(0);
         }
         .sidebar-header { padding: 20px 16px; border-bottom: 1px solid var(--border-color); }
         .new-chat-btn {
@@ -280,11 +284,29 @@
         .confirm-yes { background-color: #ef4444; color: white; }
         .confirm-no { background-color: var(--border-color); color: var(--text-primary); }
         @media (max-width: 640px) {
-            .sidebar { position: fixed; left: -280px; height: 100%; transition: left 0.3s; }
-            .sidebar.open { left: 0; }
-            .menu-toggle { display: block; }
+            .sidebar {
+                position: fixed;
+                left: 0;
+                top: 0;
+                height: 100%;
+                transform: translateX(-100%);
+            }
+            .sidebar.open {
+                transform: translateX(0);
+            }
+            .menu-toggle {
+                display: block;
+            }
         }
-        .menu-toggle { display: none; background: none; border: none; font-size: 24px; cursor: pointer; margin-right: 10px; }
+        .menu-toggle {
+            display: none;
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            margin-right: 10px;
+            color: var(--text-primary);
+        }
         .streaming-cursor::after {
             content: "▋";
             animation: blink 1s step-end infinite;
@@ -298,6 +320,22 @@
             position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
             background-color: rgba(0,0,0,0.8); color: white; padding: 8px 16px;
             border-radius: 40px; font-size: 14px; z-index: 2000;
+        }
+        /* 右滑提示（可选） */
+        .swipe-hint {
+            position: fixed;
+            left: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            background-color: rgba(0,0,0,0.5);
+            color: white;
+            padding: 6px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            pointer-events: none;
+            z-index: 15;
+            opacity: 0;
+            transition: opacity 0.5s;
         }
     </style>
 </head>
@@ -332,6 +370,7 @@
     </div>
 </div>
 <button class="fab" id="fabNewChat" title="新建对话">+</button>
+<div class="swipe-hint" id="swipeHint">👉 右滑打开历史</div>
 
 <div id="apiModal" class="api-modal">
     <div class="api-modal-content">
@@ -381,12 +420,63 @@
     const apiKeyBtn = document.getElementById('apiKeyBtn');
     const fabNewChat = document.getElementById('fabNewChat');
     const pasteBtn = document.getElementById('pasteBtn');
+    const swipeHint = document.getElementById('swipeHint');
 
     const apiModal = document.getElementById('apiModal');
     const apiKeyInput = document.getElementById('apiKeyInput');
     const apiConfirm = document.getElementById('apiConfirm');
     const apiCancel = document.getElementById('apiCancel');
 
+    // ---------- 右滑手势检测 ----------
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let isSwiping = false;
+
+    function initSwipeToOpen() {
+        const mainElement = document.querySelector('.main');
+        mainElement.addEventListener('touchstart', (e) => {
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+            isSwiping = true;
+        });
+        mainElement.addEventListener('touchmove', (e) => {
+            if (!isSwiping) return;
+            const currentX = e.touches[0].clientX;
+            const currentY = e.touches[0].clientY;
+            const diffX = currentX - touchStartX;
+            const diffY = Math.abs(currentY - touchStartY);
+            // 检测右滑：水平移动距离 > 30px 且 垂直移动较小（避免和上下滚动冲突）
+            if (diffX > 30 && diffY < 50 && touchStartX < 50) {
+                e.preventDefault();
+                openSidebar();
+                isSwiping = false;
+                // 显示提示然后淡出
+                if (swipeHint) {
+                    swipeHint.style.opacity = '1';
+                    setTimeout(() => {
+                        swipeHint.style.opacity = '0';
+                    }, 1000);
+                }
+            }
+        });
+        mainElement.addEventListener('touchend', () => {
+            isSwiping = false;
+        });
+    }
+
+    function openSidebar() {
+        sidebar.classList.add('open');
+    }
+
+    function closeSidebar() {
+        sidebar.classList.remove('open');
+    }
+
+    function toggleSidebar() {
+        sidebar.classList.toggle('open');
+    }
+
+    // ---------- 其余功能（与之前相同，仅调整侧边栏控制） ----------
     function showToast(msg) {
         const toast = document.createElement('div');
         toast.className = 'toast';
@@ -979,7 +1069,7 @@
         saveSessionsToLocal();
         renderSessionsList();
         renderMessages();
-        if (window.innerWidth <= 640) sidebar.classList.remove('open');
+        closeSidebar();  // 选择对话后自动关闭侧边栏
     }
 
     function createNewSession() {
@@ -997,6 +1087,7 @@
         saveSessionsToLocal();
         renderSessionsList();
         renderMessages();
+        closeSidebar();  // 新建后关闭侧边栏
         showToast("新建对话成功");
     }
 
@@ -1017,6 +1108,7 @@
         }
         pendingDeleteSessionId = null;
         modal.style.display = 'none';
+        closeSidebar();
     }
 
     function toggleTheme() {
@@ -1036,10 +1128,6 @@
         userInput.style.height = Math.min(userInput.scrollHeight, 120) + 'px';
     }
 
-    function toggleSidebar() {
-        sidebar.classList.toggle('open');
-    }
-
     function onCurrentSessionNameClick() {
         if (currentSessionId) renameSession(currentSessionId);
     }
@@ -1049,6 +1137,7 @@
         renderSessionsList();
         renderMessages();
         initScrollListener();
+        initSwipeToOpen();  // 启用右滑手势
 
         if (!DEEPSEEK_API_KEY) {
             setTimeout(() => {
@@ -1067,11 +1156,14 @@
         });
         userInput.addEventListener('input', autoResizeTextarea);
         userInput.addEventListener('keydown', (e) => {
-            // 回车正常换行，不发送
+            // 回车正常换行
         });
         menuToggle.addEventListener('click', toggleSidebar);
-        document.querySelector('.main').addEventListener('click', () => {
-            if (window.innerWidth <= 640) sidebar.classList.remove('open');
+        document.querySelector('.main').addEventListener('click', (e) => {
+            // 点击主区域关闭侧边栏（如果侧边栏打开且点击目标不是侧边栏内的元素）
+            if (sidebar.classList.contains('open') && !sidebar.contains(e.target)) {
+                closeSidebar();
+            }
         });
         currentSessionNameSpan.addEventListener('click', onCurrentSessionNameClick);
         apiKeyBtn.addEventListener('click', setApiKeyModal);
@@ -1087,6 +1179,16 @@
         modal.addEventListener('click', (e) => {
             if (e.target === modal) modal.style.display = 'none';
         });
+        
+        // 首次打开时显示右滑提示几秒
+        setTimeout(() => {
+            if (swipeHint) {
+                swipeHint.style.opacity = '1';
+                setTimeout(() => {
+                    swipeHint.style.opacity = '0';
+                }, 3000);
+            }
+        }, 1000);
     }
 
     init();
