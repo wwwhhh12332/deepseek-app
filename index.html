@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>DeepSeek 流式助手 - 原生剪贴板版</title>
+    <title>DeepSeek 流式助手 - 侧边栏修复版</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         :root {
@@ -18,7 +18,6 @@
             --reasoning-bubble: #fef9c3;
             --hover-bg: #f1f5f9;
             --modal-bg: rgba(0,0,0,0.5);
-            --button-hover: rgba(93, 173, 226, 0.3);
         }
         body.dark {
             --bg-color: #0f172a;
@@ -31,7 +30,6 @@
             --assistant-bubble: #334155;
             --reasoning-bubble: #2d3748;
             --hover-bg: #334155;
-            --button-hover: rgba(59, 130, 246, 0.4);
         }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
@@ -41,20 +39,21 @@
             overflow: hidden;
             transition: background-color 0.3s, color 0.3s;
         }
-        .app { display: flex; height: 100vh; }
+        .app { display: flex; height: 100vh; position: relative; }
+        /* 侧边栏始终固定，通过 transform 控制显隐 */
         .sidebar {
+            position: fixed;
+            left: 0;
+            top: 0;
             width: 280px;
+            height: 100%;
             background-color: var(--sidebar-bg);
             border-right: 1px solid var(--border-color);
             display: flex;
             flex-direction: column;
             transition: transform 0.3s ease;
-            z-index: 10;
+            z-index: 20;
             transform: translateX(-100%);
-            position: fixed;
-            left: 0;
-            top: 0;
-            height: 100%;
         }
         .sidebar.open {
             transform: translateX(0);
@@ -87,8 +86,6 @@
             display: flex;
             flex-direction: column;
             overflow: hidden;
-            position: relative;
-            margin-left: 0;
             transition: margin-left 0.3s;
         }
         .toolbar {
@@ -151,7 +148,6 @@
             line-height: 1.4;
             word-wrap: break-word;
             white-space: pre-wrap;
-            position: relative;
         }
         .user-message .bubble { background-color: var(--user-bubble); color: white; border-bottom-right-radius: 4px; }
         .assistant-message .bubble { background-color: var(--assistant-bubble); color: var(--text-primary); border-bottom-left-radius: 4px; }
@@ -331,22 +327,6 @@
             background-color: rgba(0,0,0,0.8); color: white; padding: 8px 16px;
             border-radius: 40px; font-size: 14px; z-index: 2000;
         }
-        .swipe-hint {
-            position: fixed;
-            left: 10px;
-            top: 50%;
-            transform: translateY(-50%);
-            background-color: rgba(0,0,0,0.5);
-            color: white;
-            padding: 6px 10px;
-            border-radius: 20px;
-            font-size: 12px;
-            pointer-events: none;
-            z-index: 15;
-            opacity: 0;
-            transition: opacity 0.5s;
-        }
-        /* 长按提示（可选） */
         .longpress-hint {
             position: absolute;
             bottom: 70px;
@@ -360,6 +340,20 @@
             z-index: 15;
             opacity: 0;
             transition: opacity 0.5s;
+        }
+        /* 遮罩层：点击侧边栏外部关闭 */
+        .overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.4);
+            z-index: 15;
+        }
+        .overlay.show {
+            display: block;
         }
     </style>
 </head>
@@ -391,7 +385,7 @@
     </div>
 </div>
 <button class="fab" id="fabNewChat" title="新建对话">+</button>
-<div class="swipe-hint" id="swipeHint">👉 右滑打开历史</div>
+<div class="overlay" id="overlay"></div>
 <div class="longpress-hint" id="longpressHint">📋 长按输入框可粘贴</div>
 
 <div id="apiModal" class="api-modal">
@@ -426,6 +420,7 @@
     let currentTheme = "light";
     let autoScrollEnabled = true;
 
+    // DOM 元素
     const sessionsListEl = document.getElementById('sessionsList');
     const chatMessagesEl = document.getElementById('chatMessages');
     const userInput = document.getElementById('user-input');
@@ -441,7 +436,7 @@
     const sidebar = document.getElementById('sidebar');
     const apiKeyBtn = document.getElementById('apiKeyBtn');
     const fabNewChat = document.getElementById('fabNewChat');
-    const swipeHint = document.getElementById('swipeHint');
+    const overlay = document.getElementById('overlay');
     const longpressHint = document.getElementById('longpressHint');
 
     const apiModal = document.getElementById('apiModal');
@@ -452,51 +447,22 @@
     // ---------- 侧边栏控制 ----------
     function openSidebar() {
         sidebar.classList.add('open');
+        overlay.classList.add('show');
     }
-
     function closeSidebar() {
         sidebar.classList.remove('open');
+        overlay.classList.remove('show');
     }
-
     function toggleSidebar() {
-        sidebar.classList.toggle('open');
+        if (sidebar.classList.contains('open')) {
+            closeSidebar();
+        } else {
+            openSidebar();
+        }
     }
 
-    // ---------- 右滑手势检测 ----------
-    let touchStartX = 0;
-    let touchStartY = 0;
-    let isSwiping = false;
-
-    function initSwipeToOpen() {
-        const mainElement = document.querySelector('.main');
-        if (!mainElement) return;
-        mainElement.addEventListener('touchstart', (e) => {
-            touchStartX = e.touches[0].clientX;
-            touchStartY = e.touches[0].clientY;
-            isSwiping = true;
-        });
-        mainElement.addEventListener('touchmove', (e) => {
-            if (!isSwiping) return;
-            const currentX = e.touches[0].clientX;
-            const currentY = e.touches[0].clientY;
-            const diffX = currentX - touchStartX;
-            const diffY = Math.abs(currentY - touchStartY);
-            if (diffX > 30 && diffY < 50 && touchStartX < 50) {
-                e.preventDefault();
-                openSidebar();
-                isSwiping = false;
-                if (swipeHint) {
-                    swipeHint.style.opacity = '1';
-                    setTimeout(() => {
-                        swipeHint.style.opacity = '0';
-                    }, 1000);
-                }
-            }
-        });
-        mainElement.addEventListener('touchend', () => {
-            isSwiping = false;
-        });
-    }
+    // 点击遮罩关闭侧边栏
+    overlay.addEventListener('click', closeSidebar);
 
     // ---------- 辅助函数 ----------
     function showToast(msg) {
@@ -548,6 +514,7 @@
         }
     }
 
+    // 保存/加载
     function saveSessionsToLocal() {
         localStorage.setItem('deepseek_sessions', JSON.stringify(sessions));
         localStorage.setItem('currentSessionId', currentSessionId);
@@ -667,6 +634,7 @@
         });
     }
 
+    // 流式请求
     async function streamDeepSeek(messages, model, onReasoningChunk, onContentChunk, onFinish) {
         if (!checkApiKey()) throw new Error("未设置 API Key");
         const response = await fetch(DEEPSEEK_API_URL, {
@@ -1143,7 +1111,6 @@
         renderSessionsList();
         renderMessages();
         initScrollListener();
-        initSwipeToOpen();
 
         if (!DEEPSEEK_API_KEY) {
             setTimeout(() => {
@@ -1162,14 +1129,9 @@
         });
         userInput.addEventListener('input', autoResizeTextarea);
         userInput.addEventListener('keydown', (e) => {
-            // 回车正常换行
+            // 回车换行，不发送
         });
         menuToggle.addEventListener('click', toggleSidebar);
-        document.querySelector('.main').addEventListener('click', (e) => {
-            if (sidebar.classList.contains('open') && !sidebar.contains(e.target)) {
-                closeSidebar();
-            }
-        });
         currentSessionNameSpan.addEventListener('click', onCurrentSessionNameClick);
         apiKeyBtn.addEventListener('click', setApiKeyModal);
         fabNewChat.addEventListener('click', createNewSession);
@@ -1184,15 +1146,6 @@
             if (e.target === modal) modal.style.display = 'none';
         });
         
-        // 显示右滑提示
-        setTimeout(() => {
-            if (swipeHint) {
-                swipeHint.style.opacity = '1';
-                setTimeout(() => {
-                    swipeHint.style.opacity = '0';
-                }, 3000);
-            }
-        }, 1000);
         // 显示长按提示
         setTimeout(() => {
             if (longpressHint) {
