@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>DeepSeek 流式助手 - 侧边栏修复版</title>
+    <title>DeepSeek 流式助手 - 侧边栏修复</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         :root {
@@ -427,7 +427,35 @@
         const apiConfirm = document.getElementById('apiConfirm');
         const apiCancel = document.getElementById('apiCancel');
 
-        // ---------- IndexedDB 操作 ----------
+        // ---------- 侧边栏控制 (关键修复) ----------
+        function openSidebar() {
+            if (sidebar) sidebar.classList.add('open');
+            if (overlay) overlay.classList.add('show');
+        }
+        function closeSidebar() {
+            if (sidebar) sidebar.classList.remove('open');
+            if (overlay) overlay.classList.remove('show');
+        }
+        function toggleSidebar() {
+            if (sidebar && sidebar.classList.contains('open')) {
+                closeSidebar();
+            } else {
+                openSidebar();
+            }
+        }
+
+        // 绑定菜单按钮事件 (确保在 DOM 加载后执行)
+        if (menuToggle) {
+            menuToggle.addEventListener('click', function(e) {
+                e.stopPropagation();
+                toggleSidebar();
+            });
+        }
+        if (overlay) {
+            overlay.addEventListener('click', closeSidebar);
+        }
+
+        // ---------- IndexedDB 操作 (完全不变) ----------
         function openDB() {
             return new Promise((resolve, reject) => {
                 const request = indexedDB.open(DB_NAME, DB_VERSION);
@@ -616,15 +644,6 @@
             return true;
         }
 
-        function openSidebar() { sidebar.classList.add('open'); overlay.classList.add('show'); }
-        function closeSidebar() { sidebar.classList.remove('open'); overlay.classList.remove('show'); }
-        function toggleSidebar() {
-            if (sidebar.classList.contains('open')) closeSidebar();
-            else openSidebar();
-        }
-        if(overlay) overlay.addEventListener('click', closeSidebar);
-        if(menuToggle) menuToggle.addEventListener('click', toggleSidebar);
-
         function initScrollListener() {
             chatMessagesEl.addEventListener('scroll', () => {
                 const { scrollTop, scrollHeight, clientHeight } = chatMessagesEl;
@@ -714,7 +733,7 @@
             }
         }
 
-        // ---------- 流式请求 ----------
+        // ---------- 流式请求 (不变) ----------
         async function streamDeepSeek(messages, model, onReasoningChunk, onContentChunk, onFinish) {
             if (!checkApiKey()) throw new Error("未设置 API Key");
             const response = await fetch(DEEPSEEK_API_URL, {
