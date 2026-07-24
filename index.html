@@ -980,7 +980,7 @@
             renderMessages();
             userInput.value = '';
             const apiMessages = session.messages.map(m => ({ role: m.role, content: m.content }));
-            const model = deepThinkEnabled ? "deepseek-reasoner" : "deepseek-chat";
+            const model = deepThinkEnabled ? "deepseek-v4-pro" : "deepseek-v4-flash";
             session.messages.push({ role: 'assistant', content: '', reasoning_content: '', versions: null });
             await persistCurrentSession();
             renderMessages();
@@ -1035,7 +1035,7 @@
             }
             const lastUser = prev[prev.length-1];
             if (!lastUser || lastUser.role !== 'user') { alert('无法重新生成'); return; }
-            const model = deepThinkEnabled ? "deepseek-reasoner" : "deepseek-chat";
+            const model = deepThinkEnabled ? "deepseek-v4-pro" : "deepseek-v4-flash";
             if (!msg.versions) msg.versions = [{ content: msg.content, reasoning_content: msg.reasoning_content||null, timestamp: Date.now() }];
             msg.versions.push({ content: '', reasoning_content: '', timestamp: Date.now() });
             msg.currentVersionIndex = msg.versions.length-1;
