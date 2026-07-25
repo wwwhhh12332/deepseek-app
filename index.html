@@ -932,7 +932,7 @@
                 await persistCurrentSession();
                 renderMessages();
                 const apiMessages = session.messages.map(m => ({ role: m.role, content: m.content }));
-                const model = deepThinkEnabled ? "deepseek-reasoner" : "deepseek-chat";
+                const model = deepThinkEnabled ? "deepseek-v4-pro" : "deepseek-v4-flash";
                 session.messages.push({ role: 'assistant', content: '', reasoning_content: '', versions: null });
                 await persistCurrentSession();
                 renderMessages();
