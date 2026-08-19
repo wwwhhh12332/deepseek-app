@@ -549,7 +549,7 @@
             } else {
                 currentSessionId = sessions[0].id;
             }
-            deepThinkEnabled = localStorage.getItem('deepThinkEnabled') === 'true';
+            deepThinkEnabled = false;
             currentTheme = localStorage.getItem('theme') || 'light';
             applyTheme();
             updateDeepThinkButtonUI();
@@ -664,14 +664,16 @@
             }
         }
         function updateDeepThinkButtonUI() {
-            if (deepThinkEnabled) {
-                deepThinkToggle.style.backgroundColor = 'var(--user-bubble)';
-                deepThinkToggle.style.color = 'white';
-            } else {
-                deepThinkToggle.style.backgroundColor = '';
-                deepThinkToggle.style.color = '';
-            }
-        }
+    // 强制重置为关闭状态，避免从 localStorage 读到错误的值
+    deepThinkEnabled = false;
+    if (deepThinkEnabled) {
+        deepThinkToggle.style.backgroundColor = 'var(--user-bubble)';
+        deepThinkToggle.style.color = 'white';
+    } else {
+        deepThinkToggle.style.backgroundColor = '';
+        deepThinkToggle.style.color = '';
+    }
+}
 
         async function renameSession(sessionId) {
             const session = sessions.find(s => s.id === sessionId);
