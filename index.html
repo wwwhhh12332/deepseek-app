@@ -1063,4 +1063,150 @@
         if (!lastUser || lastUser.role !== 'user') { alert('无法重新生成'); return; }
         const model = getCurrentModel();
         if (!msg.versions) msg.versions = [{ content: msg.content, reasoning_content: msg.reasoning_content||null, timestamp: Date.now() }];
-        msg.versions.push({ content: '', reasoning_conten
+        msg.versions.push({ content: '', reasoning_content: '', timestamp: Date.now() });
+        msg.currentVersionIndex = msg.versions.length-1;
+        msg.content = ''; msg.reasoning_content = '';
+        await persistCurrentSession();
+        renderMessages();
+        const wrappers = document.querySelectorAll('.message-wrapper');
+        const target = Array.from(wrappers).find(w => parseInt(w.dataset.index) === index);
+        if (target) {
+            streamingMessageWrapper = target;
+            streamingReasoningDiv = target.querySelector('.reasoning-content');
+            streamingContentBubble = target.querySelector('.bubble.assistant-message');
+            if (streamingContentBubble) streamingContentBubble.textContent = '';
+            if (streamingReasoningDiv) streamingReasoningDiv.textContent = '';
+        }
+        try {
+            await streamDeepSeek(prev, model,
+                (rc) => appendToStreamingMessage(rc, null),
+                (cc) => appendToStreamingMessage(null, cc),
+                async (finalR, finalC) => {
+                    const curVer = msg.versions[msg.currentVersionIndex];
+                    curVer.content = finalC;
+                    curVer.reasoning_content = finalR;
+                    msg.content = finalC;
+                    msg.reasoning_content = finalR;
+                    await persistCurrentSession();
+                    finishStreamingMessage();
+                    renderMessages();
+                }
+            );
+        } catch(err) {
+            const curVer = msg.versions[msg.currentVersionIndex];
+            curVer.content = `错误：${err.message}`;
+            curVer.reasoning_content = null;
+            msg.content = `错误：${err.message}`;
+            msg.reasoning_content = null;
+            await persistCurrentSession();
+            finishStreamingMessage();
+            renderMessages();
+        }
+    }
+
+    // ---------- 切换会话 / 新建 / 删除 ----------
+    async function switchSession(sessionId) {
+        if (streamingMessageWrapper) return;
+        currentSessionId = sessionId;
+        localStorage.setItem('currentSessionId', currentSessionId);
+        renderSessionsList();
+        renderMessages();
+        closeSidebar();
+    }
+
+    async function createNewSession() {
+        if (streamingMessageWrapper) return;
+        const newId = Date.now().toString();
+        const newSession = {
+            id: newId,
+            name: "新对话",
+            messages: [],
+            createdAt: new Date().toISOString()
+        };
+        await addSession(newSession);
+        currentSessionId = newId;
+        localStorage.setItem('currentSessionId', currentSessionId);
+        renderSessionsList();
+        renderMessages();
+        closeSidebar();
+        showToast("新建对话成功");
+    }
+
+    async function deleteSessionConfirmed() {
+        if (streamingMessageWrapper) return;
+        if (!pendingDeleteSessionId) return;
+        await removeSession(pendingDeleteSessionId);
+        if (sessions.length === 0) {
+            await createNewSession();
+        } else if (currentSessionId === pendingDeleteSessionId) {
+            currentSessionId = sessions[0].id;
+            localStorage.setItem('currentSessionId', currentSessionId);
+        }
+        renderSessionsList();
+        renderMessages();
+        pendingDeleteSessionId = null;
+        confirmModal.style.display = 'none';
+        closeSidebar();
+    }
+
+    function toggleTheme() {
+        currentTheme = currentTheme === 'light' ? 'dark' : 'light';
+        applyTheme();
+        localStorage.setItem('theme', currentTheme);
+    }
+
+    function autoResizeTextarea() {
+        userInput.style.height = 'auto';
+        userInput.style.height = Math.min(userInput.scrollHeight, 120) + 'px';
+    }
+
+    function onCurrentSessionNameClick() {
+        if (currentSessionId) renameSession(currentSessionId);
+    }
+
+    // ---------- 初始化 ----------
+    async function init() {
+        if (window.pdfjsLib) {
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        }
+
+        const migrated = await migrateFromLocalStorage();
+        if (migrated) showToast("已从旧版迁移数据到新存储，所有对话保留");
+        
+        await refreshSessionsFromDB();
+        renderSessionsList();
+        renderMessages();
+        initScrollListener();
+
+        if (!DEEPSEEK_API_KEY) {
+            setTimeout(() => setApiKeyModal(), 500);
+        }
+
+        sendBtn.addEventListener('click', sendMessage);
+        newChatBtn.addEventListener('click', createNewSession);
+        themeToggle.addEventListener('click', toggleTheme);
+        confirmDeleteBtn.addEventListener('click', deleteSessionConfirmed);
+        cancelDeleteBtn.addEventListener('click', () => {
+            confirmModal.style.display = 'none';
+            pendingDeleteSessionId = null;
+        });
+        userInput.addEventListener('input', autoResizeTextarea);
+        userInput.addEventListener('keydown', (e) => { /* 回车换行，不发送 */ });
+        // 点击主区域关闭侧边栏（但菜单按钮和侧边栏内部的点击已被 stopPropagation 阻止）
+        document.querySelector('.main').addEventListener('click', (e) => {
+            if (sidebar.classList.contains('open') && !sidebar.contains(e.target)) closeSidebar();
+        });
+        currentSessionNameSpan.addEventListener('click', onCurrentSessionNameClick);
+        apiKeyBtn.addEventListener('click', setApiKeyModal);
+        fabNewChat.addEventListener('click', createNewSession);
+        apiConfirm.addEventListener('click', saveApiKey);
+        apiCancel.addEventListener('click', () => apiModal.style.display = 'none');
+        apiModal.addEventListener('click', (e) => { if (e.target === apiModal) apiModal.style.display = 'none'; });
+        confirmModal.addEventListener('click', (e) => { if (e.target === confirmModal) confirmModal.style.display = 'none'; });
+    }
+
+    init();
+})();
+</script>
+</body>
+</html>
